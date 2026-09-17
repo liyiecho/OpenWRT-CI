@@ -82,6 +82,9 @@ UPDATE_PACKAGE "airpi3000m" "LianXia233/luci-app-airpi3000m-fancontrol" "main"
 UPDATE_PACKAGE "h5000m" "LianXia233/luci-app-h5000m-netmode" "main"
 UPDATE_PACKAGE "qmodem-generic" "LianXia233/luci-app-qmodem-generic" "main"
 
+# kenzok8 daed
+UPDATE_PACKAGE "daed" "kenzok8/openwrt-daede" "main" "pkg"
+
 #更新软件包版本
 UPDATE_VERSION() {
 	local PKG_NAME=$1
