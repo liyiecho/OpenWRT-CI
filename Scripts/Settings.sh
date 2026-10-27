@@ -47,10 +47,6 @@ EOF
 
 function set_kernel_size() {
 
-  # 只有 qualcommax 有这些 image/*.mk；x86/rockchip 上直接跳过，避免无谓的
-  # sed 报错（glob 不展开时 sed 会拿到字面量路径）。
-  [ -d target/linux/qualcommax/image ] || return 0
-
   for file in target/linux/qualcommax/image/*.mk; do
     sed -i 's/KERNEL_SIZE := [0-9]*k/KERNEL_SIZE := 12288k/g' "$file"
   done
@@ -65,19 +61,14 @@ function generate_config() {
 
   config_file=".config"
 
-  # 配置来源按目标分开：
-  #   X86 / ROCKCHIP -> GENERAL.txt        （mydist 数据面 + 魔改 UI/DNS）
-  #   其它           -> GENERAL-STOCK.txt  （原版逻辑：NSS、原版 honk、原版包集）
-  # TEST 只吃自己那份，不拼 GENERAL。
-  if [[ "${WRT_CONFIG,,}" == *"test"* ]]; then
-    cat "$GITHUB_WORKSPACE/Config/${WRT_CONFIG}.txt" > "$config_file"
-  elif [[ "${WRT_CONFIG}" == "X86" || "${WRT_CONFIG}" == "ROCKCHIP" ]]; then
-    cat "$GITHUB_WORKSPACE/Config/${WRT_CONFIG}.txt" \
-        "$GITHUB_WORKSPACE/Config/GENERAL.txt" > "$config_file"
+  cat "$GITHUB_WORKSPACE/Config/${WRT_CONFIG}.txt" \
+      "$GITHUB_WORKSPACE/Config/GENERAL.txt" > "$config_file"
 
-  else
-    cat "$GITHUB_WORKSPACE/Config/${WRT_CONFIG}.txt" \
-        "$GITHUB_WORKSPACE/Config/GENERAL-STOCK.txt" > "$config_file"
+  local target=$(echo "$WRT_ARCH" | cut -d'_' -f2)
+
+  # 删除 WIFI
+  if [[ "$WRT_CONFIG" == *"NOWIFI"* ]]; then
+    remove_wifi "$target"
   fi
 
   # skb recycler
