@@ -2,6 +2,105 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2026 VIKINGYFY
 
+# skb 回收
+function enable_skb_recycler() {
+  if [ -f "$1" ]; then
+    cat >> "$1" <<EOF
+
+CONFIG_KERNEL_SKB_RECYCLER=y
+CONFIG_KERNEL_SKB_RECYCLER_MULTI_CPU=y
+EOF
+  fi
+}
+
+########################################
+# 固定 kernel 6.18 新增 perf 选项
+########################################
+
+function pin_arm_perf_kernel_config() {
+  local target
+  target=$(grep -m 1 -oP '^CONFIG_TARGET_qualcommax_\K[[:alnum:]_]+(?=\=y)' "$GITHUB_WORKSPACE/Config/${WRT_CONFIG}.txt")
+
+  local kernel_config="target/linux/qualcommax/${target}/config-default"
+  if [ ! -f "$kernel_config" ]; then
+    echo "skip kernel perf config: $kernel_config not found"
+    return 0
+  fi
+
+  cat >> "$kernel_config" <<'EOF'
+
+# Kernel 6.18 eBPF/BTF perf dependencies
+# CONFIG_ARM64_BRBE is not set
+# CONFIG_ARM_CCI_PMU is not set
+# CONFIG_ARM_CCN is not set
+# CONFIG_ARM_CMN is not set
+# CONFIG_ARM_NI is not set
+# CONFIG_ARM_SMMU_V3_PMU is not set
+# CONFIG_ARM_DSU_PMU is not set
+# CONFIG_ARM_SPE_PMU is not set
+EOF
+}
+
+########################################
+# 修改内核大小
+########################################
+
+function set_kernel_size() {
+
+  # 只有 qualcommax 有这些 image/*.mk；x86/rockchip 上直接跳过，避免无谓的
+  # sed 报错（glob 不展开时 sed 会拿到字面量路径）。
+  [ -d target/linux/qualcommax/image ] || return 0
+
+  for file in target/linux/qualcommax/image/*.mk; do
+    sed -i 's/KERNEL_SIZE := [0-9]*k/KERNEL_SIZE := 12288k/g' "$file"
+  done
+
+}
+
+########################################
+# 生成最终 .config
+########################################
+
+function generate_config() {
+
+  config_file=".config"
+
+  # 配置来源按目标分开：
+  #   X86 / ROCKCHIP -> GENERAL.txt        （mydist 数据面 + 魔改 UI/DNS）
+  #   其它           -> GENERAL-STOCK.txt  （原版逻辑：NSS、原版 honk、原版包集）
+  # TEST 只吃自己那份，不拼 GENERAL。
+  if [[ "${WRT_CONFIG,,}" == *"test"* ]]; then
+    cat "$GITHUB_WORKSPACE/Config/${WRT_CONFIG}.txt" > "$config_file"
+  elif [[ "${WRT_CONFIG}" == "X86" || "${WRT_CONFIG}" == "ROCKCHIP" ]]; then
+    cat "$GITHUB_WORKSPACE/Config/${WRT_CONFIG}.txt" \
+        "$GITHUB_WORKSPACE/Config/GENERAL.txt" > "$config_file"
+
+  else
+    cat "$GITHUB_WORKSPACE/Config/${WRT_CONFIG}.txt" \
+        "$GITHUB_WORKSPACE/Config/GENERAL-STOCK.txt" > "$config_file"
+  fi
+
+  # skb recycler
+  enable_skb_recycler "$config_file"
+
+  # 内核大小
+  set_kernel_size
+
+  # kernel 6.18 perf config
+  pin_arm_perf_kernel_config
+
+}
+
+########################################
+# 执行生成 config
+########################################
+
+generate_config
+
+########################################
+# Luci / 系统修改
+########################################
+
 #移除luci-app-attendedsysupgrade
 find ./feeds/luci/collections/ -type f -name "Makefile" -exec sed -i "/attendedsysupgrade/d" {} +
 #修改默认主题
